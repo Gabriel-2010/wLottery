@@ -31,32 +31,75 @@ import "./Halt.sol";
 contract Lottery is Halt {
   using SafeMath for uint;
 
-  uint private constant MIN_AWARD = uint(10);
-  uint private constant MAX_AWARD = uint(100000);
-  uint private constant DEF_AWARD = uint(10000);
+  uint private constant DEFAULT_AWARD = uint(10000);  /* WAN unit */
+  uint private constant EPOCH_BLOCKS = uint(10000);
 
-  uint public award = DEF_AWARD;  /* WAN unit */
+  address payable [] private players;
+  mapping(address => uint) private mapAmount;
+  uint private startBlock = 0;
 
-  function toWin(uint value) private returns(uint) {
+  event BetEvent(address indexed player, uint indexed amount);
+  event RandomDebug(uint indexed random, uint indexed totalAmount, uint indexed offset);
+  event Congrat(address indexed player, uint indexed amount);
+  
+  function toWin(uint value) private pure returns(uint) {
     return value.mul(1 ether);
   }
 
-  function fromWin(uint value) private returns(uint) {
+  function fromWin(uint value) private pure returns(uint) {
     return value.div(1 ether);
   }
 
-  function setMaxAward(uint value) 
-    external
-    onlyOwner
-    isHalted
-    returns (bool)
-  {
-    if ((value >= MIN_AWARD) && (value <= MAX_AWARD)) {
-      award = value;
-      return true;
-    } else {
-      return false;
+  function getPlayer() external view returns(address payable[] memory) {
+    return players;
+  }
+
+  function getAmount(address player) external view returns(uint) {
+    return mapAmount[player];
+  }
+
+  function random(uint index) public view returns (uint) {
+    return uint(keccak256(abi.encodePacked(block.difficulty, now, blockhash(block.number - 1), index)));
+  }
+
+  function resetEpoch() private {
+    revert();
+  }
+
+  function draw() private {
+    startBlock = 0;
+
+    uint totalAmount = fromWin(address(this).balance);
+    uint entropy = 0;
+
+    while (address(this).balance > 0) {
+      uint randomNumber = random(entropy);
+      uint offset = randomNumber % totalAmount;
+      emit RandomDebug(randomNumber, totalAmount, offset);
+
+      for (uint j = 0; j < players.length; j++) {
+        address payable player = players[j];
+        uint wanAmount = fromWin(mapAmount[player]);
+        if (offset < wanAmount) {
+          uint award = address(this).balance > DEFAULT_AWARD ? DEFAULT_AWARD: address(this).balance;
+          player.transfer(award);
+          emit Congrat(player, award);
+          break;
+        }
+        offset = offset.sub(wanAmount);
+      }
+      entropy++;
     }
+
+    resetEpoch();
+  }
+
+  function addPlayer(address payable player, uint wanAmount) private {
+    if (mapAmount[player] == 0) {
+      players.push(player);
+    }
+    mapAmount[player] = mapAmount[player].add(wanAmount);
+    emit BetEvent(player, wanAmount);
   }
 
   function () 
@@ -64,7 +107,25 @@ contract Lottery is Halt {
     payable
     notHalted
   {
-    revert();
+    /* Avoid being called by contract */
+    require(msg.sender == tx.origin);
+
+    if (startBlock != 0 && block.number >= startBlock.add(EPOCH_BLOCKS)) {
+      draw();
+    }
+
+    /* The bet amount should be the integer times of 1 WAN */
+    uint wanAmount = fromWin(msg.value);
+    if (wanAmount != 0) {
+      if (startBlock == 0) {
+        startBlock = block.number;
+      }
+      addPlayer(msg.sender, wanAmount);
+    }
+    uint rest = msg.value.sub(toWin(wanAmount));
+    if (rest > 0 ether) {
+      msg.sender.transfer(rest);
+    }
   }
 
  
