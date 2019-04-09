@@ -34,11 +34,18 @@ contract Lottery is Halt {
   uint private constant DEFAULT_AWARD = uint(10000);  /* WAN unit */
   uint private constant EPOCH_BLOCKS = uint(10000);
 
-  address payable [] private players;
-  mapping(address => uint) private mapAmount;
-  uint private startBlock = 0;
+  struct Player {
+    address payable addr;
+    uint            fund;
+  }
 
-  event BetEvent(address indexed player, uint indexed amount);
+  mapping(uint => Player) public mapPlayers;
+  // mapping(uint => uint) private mapPlayerFunds;
+
+  uint public totalPlayers = 0;
+  uint public startBlock = 0;
+
+  event addPlayerEvent(address indexed player, uint indexed amount);
   event RandomDebug(uint indexed random, uint indexed totalAmount, uint indexed offset);
   event Congrat(address indexed player, uint indexed amount);
   
@@ -50,23 +57,39 @@ contract Lottery is Halt {
     return value.div(1 ether);
   }
 
-  function getPlayer() external view returns(address payable[] memory) {
-    return players;
-  }
+  // function getPlayerAddr() external view returns(address payable[] memory) {
+  //   address[] memory addrs = new address[](totalPlayers);
+  //   for (uint i = 0; i < totalPlayers; i++) {
+  //     addrs[i] = mapPlayers[i];
+  //   }
+  //   return addrs;
+  // }
 
-  function getAmount(address player) external view returns(uint) {
-    return mapAmount[player];
+  // function getPlayerFunds(address player) external view returns(uint) {
+  //   return mapPlayerFunds[player];
+  // }
+
+  function getPlayers() external view returns(address payable [] memory, uint[] memory) {
+    address payable[] memory addrs = new address payable[](totalPlayers);
+    uint[]    memory funds = new uint[](totalPlayers);
+    
+    for (uint i = 0; i < totalPlayers; i++) {
+      Player memory player = mapPlayers[i];
+      addrs[i] = player.addr;
+      funds[i] = player.fund;
+    }
+    return (addrs, funds);
   }
 
   function random(uint index) public view returns (uint) {
-    return uint(keccak256(abi.encodePacked(block.difficulty, now, blockhash(block.number - 1), index)));
+    return uint(keccak256(abi.encodePacked(now, blockhash(block.number - 1), index)));
   }
 
   function resetEpoch() private {
-    revert();
+    totalPlayers = 0;
   }
 
-  function draw() private {
+  function draw() public {
     startBlock = 0;
 
     uint totalAmount = fromWin(address(this).balance);
@@ -77,29 +100,28 @@ contract Lottery is Halt {
       uint offset = randomNumber % totalAmount;
       emit RandomDebug(randomNumber, totalAmount, offset);
 
-      for (uint j = 0; j < players.length; j++) {
-        address payable player = players[j];
-        uint wanAmount = fromWin(mapAmount[player]);
+      for (uint j = 0; j < totalPlayers; j++) {
+        Player memory player = mapPlayers[j];
+        uint wanAmount = fromWin(player.fund);
         if (offset < wanAmount) {
           uint award = address(this).balance > DEFAULT_AWARD ? DEFAULT_AWARD: address(this).balance;
-          player.transfer(award);
-          emit Congrat(player, award);
+          player.addr.transfer(award);
+          emit Congrat(player.addr, award);
           break;
         }
         offset = offset.sub(wanAmount);
       }
-      entropy++;
+      entropy = entropy.add(1);
     }
 
     resetEpoch();
   }
 
-  function addPlayer(address payable player, uint wanAmount) private {
-    if (mapAmount[player] == 0) {
-      players.push(player);
-    }
-    mapAmount[player] = mapAmount[player].add(wanAmount);
-    emit BetEvent(player, wanAmount);
+  function addPlayer(address payable playerAddr, uint wanAmount) private {
+    mapPlayers[totalPlayers].addr = playerAddr;
+    mapPlayers[totalPlayers].fund = wanAmount;
+    totalPlayers = totalPlayers.add(1);
+    emit addPlayerEvent(playerAddr, wanAmount);
   }
 
   function () 
