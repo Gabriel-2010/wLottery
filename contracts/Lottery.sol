@@ -73,7 +73,7 @@ contract Lottery is Halt {
     return (addrs, funds);
   }
 
-  function random() public view returns (uint) {
+  function random() private view returns (uint) {
     return uint(keccak256(abi.encodePacked(now, blockhash(block.number - 1))));
   }
 
