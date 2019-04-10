@@ -4,7 +4,7 @@ import './Owned.sol';
 
 contract Halt is Owned {
     
-    bool private halted = true; 
+    bool private halted = false; 
     
     modifier notHalted() {
         require(!halted);

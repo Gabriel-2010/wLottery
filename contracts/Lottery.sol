@@ -32,22 +32,27 @@ contract Lottery is Halt {
   using SafeMath for uint;
 
   uint private constant DEFAULT_AWARD = uint(10000);  /* WAN unit */
-  uint private constant EPOCH_BLOCKS = uint(10000);
+  // uint private constant EPOCH_BLOCKS = uint(10000);
+
+  /* Who trigger the draw action will get 1/1000 of total funds up to 1 WAN */
+  uint private constant DRAW_AWARD_DENOMINATOR = uint(1000);
+  uint private constant DRAW_AWARD_MAXIMUM = 1 ether;
+
+  uint private constant EPOCH_BLOCKS = uint(5);
 
   struct Player {
     address payable addr;
     uint            fund;
   }
-
   mapping(uint => Player) public mapPlayers;
-  // mapping(uint => uint) private mapPlayerFunds;
 
   uint public totalPlayers = 0;
   uint public startBlock = 0;
 
-  event addPlayerEvent(address indexed player, uint indexed amount);
-  event RandomDebug(uint indexed random, uint indexed totalAmount, uint indexed offset);
-  event Congrat(address indexed player, uint indexed amount);
+  event PlayerAddedEvent(address indexed player, uint indexed amount);
+  event RandomEvent(uint indexed random, uint indexed totalAmount, uint indexed offset);
+  event WinnerAwardEvent(address indexed player, uint indexed amount);
+  event DrawAwardEvent(address indexed player, uint indexed amount);
   
   function toWin(uint value) private pure returns(uint) {
     return value.mul(1 ether);
@@ -56,18 +61,6 @@ contract Lottery is Halt {
   function fromWin(uint value) private pure returns(uint) {
     return value.div(1 ether);
   }
-
-  // function getPlayerAddr() external view returns(address payable[] memory) {
-  //   address[] memory addrs = new address[](totalPlayers);
-  //   for (uint i = 0; i < totalPlayers; i++) {
-  //     addrs[i] = mapPlayers[i];
-  //   }
-  //   return addrs;
-  // }
-
-  // function getPlayerFunds(address player) external view returns(uint) {
-  //   return mapPlayerFunds[player];
-  // }
 
   function getPlayers() external view returns(address payable [] memory, uint[] memory) {
     address payable[] memory addrs = new address payable[](totalPlayers);
@@ -81,37 +74,43 @@ contract Lottery is Halt {
     return (addrs, funds);
   }
 
-  function random(uint index) public view returns (uint) {
-    return uint(keccak256(abi.encodePacked(now, blockhash(block.number - 1), index)));
+  function random() public view returns (uint) {
+    return uint(keccak256(abi.encodePacked(now, blockhash(block.number - 1))));
   }
 
   function resetEpoch() private {
     totalPlayers = 0;
   }
 
+  function max(uint a, uint b) private pure returns (uint) {
+      return a > b ? a : b;
+  }
+
   function draw() public {
     startBlock = 0;
 
     uint totalAmount = fromWin(address(this).balance);
-    uint entropy = 0;
 
-    while (address(this).balance > 0) {
-      uint randomNumber = random(entropy);
-      uint offset = randomNumber % totalAmount;
-      emit RandomDebug(randomNumber, totalAmount, offset);
+    uint randomNumber = random();
+    uint offset = randomNumber % totalAmount;
+    emit RandomEvent(randomNumber, totalAmount, offset);
 
-      for (uint j = 0; j < totalPlayers; j++) {
-        Player memory player = mapPlayers[j];
-        uint wanAmount = fromWin(player.fund);
-        if (offset < wanAmount) {
-          uint award = address(this).balance > DEFAULT_AWARD ? DEFAULT_AWARD: address(this).balance;
-          player.addr.transfer(award);
-          emit Congrat(player.addr, award);
-          break;
-        }
-        offset = offset.sub(wanAmount);
+    for (uint j = 0; j < totalPlayers; j++) {
+      Player memory player = mapPlayers[j];
+      uint wanAmount = player.fund;
+      if (offset < wanAmount) {
+        uint funds = address(this).balance;
+        uint drawAward = max(funds.div(DRAW_AWARD_DENOMINATOR), DRAW_AWARD_MAXIMUM);
+        uint award = funds.sub(drawAward);
+
+        msg.sender.transfer(drawAward);
+        emit DrawAwardEvent(msg.sender, drawAward);
+        
+        player.addr.transfer(award);
+        emit WinnerAwardEvent(player.addr, award);
+        break;
       }
-      entropy = entropy.add(1);
+      offset = offset.sub(wanAmount);
     }
 
     resetEpoch();
@@ -121,7 +120,7 @@ contract Lottery is Halt {
     mapPlayers[totalPlayers].addr = playerAddr;
     mapPlayers[totalPlayers].fund = wanAmount;
     totalPlayers = totalPlayers.add(1);
-    emit addPlayerEvent(playerAddr, wanAmount);
+    emit PlayerAddedEvent(playerAddr, wanAmount);
   }
 
   function () 
