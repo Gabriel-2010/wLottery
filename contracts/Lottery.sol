@@ -31,14 +31,13 @@ import "./Halt.sol";
 contract Lottery is Halt {
   using SafeMath for uint;
 
-  uint private constant DEFAULT_AWARD = uint(10000);  /* WAN unit */
   // uint private constant EPOCH_BLOCKS = uint(10000);
+  uint private constant EPOCH_BLOCKS = uint(100);
 
   /* Who trigger the draw action will get 1/1000 of total funds up to 1 WAN */
   uint private constant DRAW_AWARD_DENOMINATOR = uint(1000);
   uint private constant DRAW_AWARD_MAXIMUM = 1 ether;
 
-  uint private constant EPOCH_BLOCKS = uint(5);
 
   struct Player {
     address payable addr;
