@@ -82,14 +82,15 @@ contract Lottery is Halt {
     totalPlayers = 0;
   }
 
-  function max(uint a, uint b) private pure returns (uint) {
-      return a > b ? a : b;
+  function min(uint a, uint b) private pure returns (uint) {
+      return a < b ? a : b;
   }
 
-  function draw() public {
+  function draw() private {
     startBlock = 0;
 
-    uint totalAmount = fromWin(address(this).balance);
+    uint funds = address(this).balance.sub(msg.value);
+    uint totalAmount = fromWin(funds);
 
     uint randomNumber = random();
     uint offset = randomNumber % totalAmount;
@@ -99,8 +100,7 @@ contract Lottery is Halt {
       Player memory player = mapPlayers[j];
       uint wanAmount = player.fund;
       if (offset < wanAmount) {
-        uint funds = address(this).balance;
-        uint drawAward = max(funds.div(DRAW_AWARD_DENOMINATOR), DRAW_AWARD_MAXIMUM);
+        uint drawAward = min(funds.div(DRAW_AWARD_DENOMINATOR), DRAW_AWARD_MAXIMUM);
         uint award = funds.sub(drawAward);
 
         msg.sender.transfer(drawAward);
